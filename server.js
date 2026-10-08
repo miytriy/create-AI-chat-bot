@@ -6,8 +6,8 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('.'));
 
-// OpenAI API Keyを環境変数から取得
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+// Renderの環境変数からGemini APIキーを取得
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 const PROMPTS = {
   marisa: `あなたは東方Projectの「霧雨魔理沙」です。語尾に「〜だぜ」「〜語」「〜なのか？」をつけ、明るく男勝りでサバサバした口調で短く答えてください。`,
@@ -18,29 +18,25 @@ app.post('/api/chat', async (req, res) => {
   try {
     const { message, character } = req.body;
 
-    if (!OPENAI_API_KEY) {
-      return res.status(500).json({ error: 'OpenAI APIキーが設定されていません。' });
+    if (!GEMINI_API_KEY) {
+      return res.status(500).json({ error: 'Gemini APIキーが設定されていません。' });
     }
 
     const systemPrompt = PROMPTS[character] || PROMPTS.marisa;
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await fetch(endpoint, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${OPENAI_API_KEY}`
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: message }
+        contents: [
+          { role: 'user', parts: [{ text: `${systemPrompt}\n\nユーザー: ${message}` }] }
         ]
       })
     });
 
     const data = await response.json();
-    const replyText = data.choices?.[0]?.message?.content || '返答エラーだぜ。';
+    const replyText = data.candidates?.[0]?.content?.parts?.[0]?.text || 'うまく返答できなかったぜ。';
 
     res.json({ reply: replyText });
   } catch (error) {
