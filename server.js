@@ -25,8 +25,8 @@ app.post('/api/chat', async (req, res) => {
 
     const systemPrompt = PROMPTS[character] || PROMPTS.marisa;
     
-    // 標準モデル（gemini-1.5-flash）を指定
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+    // サポートされている現行モデル（gemini-2.5-flash）に変更
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
     const response = await fetch(endpoint, {
       method: 'POST',
@@ -40,7 +40,6 @@ app.post('/api/chat', async (req, res) => {
 
     const data = await response.json();
 
-    // エラーレスポンスが返ってきた場合
     if (!response.ok || data.error) {
       console.error('Gemini API Error Detail:', JSON.stringify(data.error || data));
       const errMsg = data.error?.message || 'Gemini APIエラーが発生しました。';
