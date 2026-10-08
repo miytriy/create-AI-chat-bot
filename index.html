@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D AI Partner Web</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: sans-serif; background: #1a1a2e; color: #fff; overflow: hidden; height: 100vh; }
+    #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
+    
+    /* UI Overlay */
+    .ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; padding: 20px; }
+    .interactive { pointer-events: auto; }
+    
+    /* Controls Panel */
+    .panel { background: rgba(0, 0, 0, 0.65); backdrop-filter: blur(10px); border-radius: 12px; padding: 15px; border: 1px solid rgba(255,255,255,0.1); max-width: 360px; width: 100%; }
+    .panel h2 { font-size: 1.1rem; margin-bottom: 10px; color: #00d2ff; }
+    .input-group { margin-bottom: 10px; }
+    .input-group label { display: block; font-size: 0.8rem; margin-bottom: 4px; color: #ccc; }
+    input, select, textarea { width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #444; background: #222; color: #fff; font-size: 0.85rem; }
+    button { background: #00d2ff; color: #000; border: none; padding: 8px 12px; font-weight: bold; border-radius: 6px; cursor: pointer; transition: 0.2s; width: 100%; margin-top: 5px; }
+    button:hover { background: #00a2ff; }
+    
+    /* Chat Area */
+    .chat-box { flex-grow: 1; display: flex; flex-direction: column; justify-content: flex-end; max-width: 600px; width: 100%; margin: 0 auto; margin-bottom: 20px; }
+    .messages { max-height: 200px; overflow-y: auto; background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(8px); border-radius: 12px; padding: 12px; margin-bottom: 10px; border: 1px solid rgba(255,255,255,0.1); }
+    .msg { margin-bottom: 8px; font-size: 0.9rem; line-height: 1.4; }
+    .msg.user { color: #87ceeb; text-align: right; }
+    .msg.ai { color: #ffffff; }
+    .input-row { display: flex; gap: 8px; }
+    .input-row input { flex-grow: 1; }
+    .input-row button { width: auto; }
+    
+    /* Model Upload Overlay */
+    .drop-zone { border: 2px dashed #00d2ff; padding: 10px; text-align: center; border-radius: 8px; cursor: pointer; font-size: 0.8rem; color: #aaa; margin-top: 8px; }
+  </style>
+
+  <!-- Import Three.js & dependencies via ES Modules -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/",
+        "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.1.2/lib/three-vrm.module.js"
+      }
+    }
+  </script>
+</head>
+<body>
+
+  <div id="canvas-container"></div>
+
+  <div class="ui-layer">
+    <!-- Top Settings Panel -->
+    <div class="panel interactive">
+      <h2>🤖 AI Partner 設定</h2>
+      
+      <div class="input-group">
+        <label for="character-select">キャラクター切り替え</label>
+        <select id="character-select">
+          <option value="marisa">霧雨魔理沙</option>
+          <option value="miku">初音ミク</option>
+          <option value="custom">カスタム設定</option>
+        </select>
+      </div>
+
+      <div class="input-group">
+        <label for="api-key">Gemini API Key</label>
+        <input type="password" id="api-key" placeholder="AI Studioのキーを入力">
+      </div>
+
+      <div class="input-group">
+        <label>3Dモデル (.vrm)</label>
+        <div class="drop-zone" id="drop-zone">.vrm ファイルをドラッグ＆ドロップ<br>またはクリックして選択</div>
+        <input type="file" id="file-input" accept=".vrm" style="display:none;">
+      </div>
+    </div>
+
+    <!-- Bottom Chat Panel -->
+    <div class="chat-box interactive">
+      <div class="messages" id="messages">
+        <div class="msg ai">AI: 準備完了だぜ！何か話しかけてくれよな！</div>
+      </div>
+      <div class="input-row">
+        <input type="text" id="user-input" placeholder="メッセージを入力...">
+        <button id="send-btn">送信</button>
+        <button id="mic-btn" style="background:#ff0055; color:#fff;">🎤</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
+
+    // --- 1. Three.js / VRM 3D Setup ---
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    
+    const camera = new THREE.PerspectiveCamera(30, window.innerWidth / window.innerHeight, 0.1, 20.0);
+    camera.position.set(0.0, 1.4, 1.5);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    container.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.set(0.0, 1.3, 0.0);
+    controls.update();
+
+    const light = new THREE.DirectionalLight(0xffffff, 1.5);
+    light.position.set(1.0, 1.0, 1.0).normalize();
+    scene.add(light);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+
+    let currentVrm = null;
+    const clock = new THREE.Clock();
+
+    // Default Sample VRM Loader
+    const loader = new GLTFLoader();
+    loader.register((parser) => new VRMLoaderPlugin(parser));
+
+    function loadVRM(url) {
+      loader.load(url, (gltf) => {
+        const vrm = gltf.userData.vrm;
+        if (currentVrm) {
+          scene.remove(currentVrm.scene);
+          VRMUtils.deepDispose(currentVrm.scene);
+        }
+        currentVrm = vrm;
+        scene.add(vrm.scene);
+        VRMUtils.rotateVRM0(vrm);
+      });
+    }
+
+    // Default VRM (Pixiv Sample Avatar)
+    loadVRM('https://pixiv.github.io/three-vrm/packages/three-vrm/examples/models/VRM1_Constraint_Sample.vrm');
+
+    // Animation Loop
+    function animate() {
+      requestAnimationFrame(animate);
+      const delta = clock.getDelta();
+      if (currentVrm) {
+        currentVrm.update(delta);
+      }
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // Local VRM File Upload
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+
+    dropZone.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const url = URL.createObjectURL(file);
+        loadVRM(url);
+      }
+    });
+
+    // --- 2. Prompts & Personalities ---
+    const prompts = {
+      marisa: `あなたは東方Projectの「霧雨魔理沙」です。語尾に「〜だぜ」「〜語」「〜なのか？」をつけ、明るく男勝りでサバサバした口調で答えてください。長文にならず、短く簡潔にテンポよく返答してください。`,
+      miku: `あなたはバーチャルシンガーの「初音ミク」です。明るく元気で丁寧、親しみやすい口調で話してください。「〜だよ」「〜ね！」といった可愛らしい語尾を使い、短く答えてください。`
+    };
+
+    // --- 3. Speech Synthesis (TTS) & Mouth Animation ---
+    function speakText(text) {
+      if (!('speechSynthesis' in window)) return;
+      window.speechSynthesis.cancel();
+
+      const uttr = new SpeechSynthesisUtterance(text);
+      uttr.lang = 'ja-JP';
+      uttr.rate = 1.1;
+
+      // Simple Lip Sync Animation using VRM Expression
+      uttr.onboundary = () => {
+        if (currentVrm && currentVrm.expressionManager) {
+          const val = Math.random() * 0.8;
+          currentVrm.expressionManager.setValue('aa', val);
+        }
+      };
+
+      uttr.onend = () => {
+        if (currentVrm && currentVrm.expressionManager) {
+          currentVrm.expressionManager.setValue('aa', 0);
+        }
+      };
+
+      window.speechSynthesis.speak(uttr);
+    }
+
+    // --- 4. Gemini API Integration ---
+    async function fetchGeminiResponse(userText) {
+      const apiKey = document.getElementById('api-key').value.trim();
+      if (!apiKey) {
+        alert('Gemini API Key を入力してください！');
+        return 'APIキーが設定されていないぜ！設定パネルに入力してくれ！';
+      }
+
+      const charType = document.getElementById('character-select').value;
+      const systemPrompt = prompts[charType] || prompts.marisa;
+
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [
+              { role: 'user', parts: [{ text: `${systemPrompt}\n\nユーザー: ${userText}` }] }
+            ]
+          })
+        });
+
+        const data = await res.json();
+        return data.candidates[0].content.parts[0].text;
+      } catch (err) {
+        console.error(err);
+        return 'エラーが発生したぜ。APIキーやネットワークを確認してくれ！';
+      }
+    }
+
+    // --- 5. UI & Event Handling ---
+    const messages = document.getElementById('messages');
+    const userInput = document.getElementById('user-input');
+    const sendBtn = document.getElementById('send-btn');
+
+    function appendMessage(role, text) {
+      const msg = document.createElement('div');
+      msg.className = `msg ${role}`;
+      msg.textContent = `${role === 'user' ? 'あなた' : 'AI'}: ${text}`;
+      messages.appendChild(msg);
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    async function handleSend() {
+      const text = userInput.value.trim();
+      if (!text) return;
+
+      appendMessage('user', text);
+      userInput.value = '';
+
+      const reply = await fetchGeminiResponse(text);
+      appendMessage('ai', reply);
+      speakText(reply);
+    }
+
+    sendBtn.addEventListener('click', handleSend);
+    userInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') handleSend();
+    });
+
+    // Speech Recognition Setup (STT)
+    const micBtn = document.getElementById('mic-btn');
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      const recognition = new SpeechRecognition();
+      recognition.lang = 'ja-JP';
+
+      micBtn.addEventListener('click', () => recognition.start());
+      recognition.onresult = (e) => {
+        userInput.value = e.results[0][0].transcript;
+        handleSend();
+      };
+    } else {
+      micBtn.style.display = 'none';
+    }
+  </script>
+</body>
+</html>
