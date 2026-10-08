@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>3D AI Partner Web with Firebase Auth</title>
+  <title>3D AI Partner Web</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: sans-serif; background: #1a1a2e; color: #fff; overflow: hidden; height: 100vh; }
@@ -16,17 +16,13 @@
     .panel h2 { font-size: 1.1rem; margin-bottom: 10px; color: #00d2ff; }
     .input-group { margin-bottom: 10px; }
     .input-group label { display: block; font-size: 0.8rem; margin-bottom: 4px; color: #ccc; }
-    input, select { width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #444; background: #222; color: #fff; font-size: 0.85rem; }
+    select { width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #444; background: #222; color: #fff; font-size: 0.85rem; }
     button { background: #00d2ff; color: #000; border: none; padding: 8px 12px; font-weight: bold; border-radius: 6px; cursor: pointer; transition: 0.2s; width: 100%; margin-top: 5px; }
     button:hover { background: #00a2ff; }
     
-    /* Auth Buttons */
     .btn-google { background: #4285F4; color: #fff; }
-    .btn-google:hover { background: #357ae8; }
     .btn-apple { background: #000000; color: #fff; border: 1px solid #555; }
-    .btn-apple:hover { background: #222222; }
     .btn-logout { background: #ff4757; color: #fff; }
-
     .user-info { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); }
     .user-avatar { width: 32px; height: 32px; border-radius: 50%; }
 
@@ -36,7 +32,7 @@
     .msg.user { color: #87ceeb; text-align: right; }
     .msg.ai { color: #ffffff; }
     .input-row { display: flex; gap: 8px; }
-    .input-row input { flex-grow: 1; }
+    .input-row input { flex-grow: 1; padding: 8px; border-radius: 6px; border: 1px solid #444; background: #222; color: #fff; }
     .input-row button { width: auto; }
     
     .drop-zone { border: 2px dashed #00d2ff; padding: 10px; text-align: center; border-radius: 8px; cursor: pointer; font-size: 0.8rem; color: #aaa; margin-top: 8px; }
@@ -63,13 +59,11 @@
     <div class="panel interactive">
       <h2>👤 アカウント & 設定</h2>
       
-      <!-- 未ログイン時の表示 -->
       <div id="auth-logged-out">
         <button id="btn-google-login" class="btn-google">Googleでログイン</button>
         <button id="btn-apple-login" class="btn-apple">Appleでログイン</button>
       </div>
 
-      <!-- ログイン時の表示 -->
       <div id="auth-logged-in" class="hidden">
         <div class="user-info">
           <img id="user-photo" class="user-avatar" src="" alt="avatar">
@@ -89,11 +83,6 @@
       </div>
 
       <div class="input-group">
-        <label for="api-key">Gemini API Key</label>
-        <input type="password" id="api-key" placeholder="AI Studioのキーを入力">
-      </div>
-
-      <div class="input-group">
         <label>3Dモデル (.vrm)</label>
         <div class="drop-zone" id="drop-zone">.vrm ファイルを選択</div>
         <input type="file" id="file-input" accept=".vrm" style="display:none;">
@@ -102,7 +91,7 @@
 
     <div class="chat-box interactive">
       <div class="messages" id="messages">
-        <div class="msg ai">AI: ログインしてもそのままでも話せるぜ！</div>
+        <div class="msg ai">AI: 準備完了だぜ！話しかけてくれよな！</div>
       </div>
       <div class="input-row">
         <input type="text" id="user-input" placeholder="メッセージを入力...">
@@ -117,17 +106,9 @@
     import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
     import { initializeApp } from 'firebase/app';
-    import { 
-      getAuth, 
-      signInWithPopup, 
-      GoogleAuthProvider, 
-      OAuthProvider, 
-      signOut, 
-      onAuthStateChanged 
-    } from 'firebase/auth';
+    import { getAuth, signInWithPopup, GoogleAuthProvider, OAuthProvider, signOut, onAuthStateChanged } from 'firebase/auth';
 
-    // --- 1. Firebase Auth Setup ---
-    // ▼▼▼ ここにご自身の Firebase 設定オブジェクトを貼り付けてください ▼▼▼
+    // --- Firebase Auth ---
     const firebaseConfig = {
       apiKey: "YOUR_FIREBASE_API_KEY",
       authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
@@ -145,30 +126,14 @@
     const userNameSpan = document.getElementById('user-name');
     const userPhotoImg = document.getElementById('user-photo');
 
-    // Google Login
     document.getElementById('btn-google-login').addEventListener('click', async () => {
-      const provider = new GoogleAuthProvider();
-      try {
-        await signInWithPopup(auth, provider);
-      } catch (err) {
-        alert('Googleログインエラー: ' + err.message);
-      }
+      try { await signInWithPopup(auth, new GoogleAuthProvider()); } catch (err) { alert(err.message); }
     });
-
-    // Apple Login
     document.getElementById('btn-apple-login').addEventListener('click', async () => {
-      const provider = new OAuthProvider('apple.com');
-      try {
-        await signInWithPopup(auth, provider);
-      } catch (err) {
-        alert('Appleログインエラー: ' + err.message);
-      }
+      try { await signInWithPopup(auth, new OAuthProvider('apple.com')); } catch (err) { alert(err.message); }
     });
-
-    // Logout
     document.getElementById('btn-logout').addEventListener('click', () => signOut(auth));
 
-    // Auth State Observer
     onAuthStateChanged(auth, (user) => {
       if (user) {
         loggedOutDiv.classList.add('hidden');
@@ -181,7 +146,7 @@
       }
     });
 
-    // --- 2. Three.js / VRM Engine ---
+    // --- Three.js / VRM ---
     const container = document.getElementById('canvas-container');
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(30, window.innerWidth / window.innerHeight, 0.1, 20.0);
@@ -242,32 +207,20 @@
       if (file) loadVRM(URL.createObjectURL(file));
     });
 
-    // --- 3. Chat Logic ---
-    const prompts = {
-      marisa: `あなたは東方Projectの「霧雨魔理沙」です。語尾に「〜だぜ」等をつけ男勝りに短く答えてください。`,
-      miku: `あなたはバーチャルシンガーの「初音ミク」です。明るく親しみやすい口調で短く答えてください。`
-    };
-
-    async function fetchGeminiResponse(userText) {
-      const apiKey = document.getElementById('api-key').value.trim();
-      if (!apiKey) return 'Gemini APIキーを入力してくれ！';
-
-      const charType = document.getElementById('character-select').value;
-      const systemPrompt = prompts[charType];
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+    // --- バックエンド（/api/chat）へ送信 ---
+    async function fetchAIResponse(userText) {
+      const character = document.getElementById('character-select').value;
 
       try {
-        const res = await fetch(endpoint, {
+        const res = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ role: 'user', parts: [{ text: `${systemPrompt}\n\nユーザー: ${userText}` }] }]
-          })
+          body: JSON.stringify({ message: userText, character })
         });
         const data = await res.json();
-        return data.candidates[0].content.parts[0].text;
+        return data.reply || data.error || 'エラーが発生しました。';
       } catch (err) {
-        return '通信エラーが発生したぜ。';
+        return 'サーバーとの通信に失敗したぜ。';
       }
     }
 
@@ -285,7 +238,7 @@
       messages.appendChild(userMsg);
       userInput.value = '';
 
-      const reply = await fetchGeminiResponse(text);
+      const reply = await fetchAIResponse(text);
       const aiMsg = document.createElement('div');
       aiMsg.className = 'msg ai';
       aiMsg.textContent = `AI: ${reply}`;
