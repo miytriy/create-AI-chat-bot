@@ -3,26 +3,33 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>3D AI Partner Web</title>
+  <title>3D AI Partner Web with Firebase Auth</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: sans-serif; background: #1a1a2e; color: #fff; overflow: hidden; height: 100vh; }
     #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
     
-    /* UI Overlay */
     .ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; padding: 20px; }
     .interactive { pointer-events: auto; }
     
-    /* Controls Panel */
-    .panel { background: rgba(0, 0, 0, 0.65); backdrop-filter: blur(10px); border-radius: 12px; padding: 15px; border: 1px solid rgba(255,255,255,0.1); max-width: 360px; width: 100%; }
+    .panel { background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(10px); border-radius: 12px; padding: 15px; border: 1px solid rgba(255,255,255,0.1); max-width: 360px; width: 100%; }
     .panel h2 { font-size: 1.1rem; margin-bottom: 10px; color: #00d2ff; }
     .input-group { margin-bottom: 10px; }
     .input-group label { display: block; font-size: 0.8rem; margin-bottom: 4px; color: #ccc; }
-    input, select, textarea { width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #444; background: #222; color: #fff; font-size: 0.85rem; }
+    input, select { width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #444; background: #222; color: #fff; font-size: 0.85rem; }
     button { background: #00d2ff; color: #000; border: none; padding: 8px 12px; font-weight: bold; border-radius: 6px; cursor: pointer; transition: 0.2s; width: 100%; margin-top: 5px; }
     button:hover { background: #00a2ff; }
     
-    /* Chat Area */
+    /* Auth Buttons */
+    .btn-google { background: #4285F4; color: #fff; }
+    .btn-google:hover { background: #357ae8; }
+    .btn-apple { background: #000000; color: #fff; border: 1px solid #555; }
+    .btn-apple:hover { background: #222222; }
+    .btn-logout { background: #ff4757; color: #fff; }
+
+    .user-info { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+    .user-avatar { width: 32px; height: 32px; border-radius: 50%; }
+
     .chat-box { flex-grow: 1; display: flex; flex-direction: column; justify-content: flex-end; max-width: 600px; width: 100%; margin: 0 auto; margin-bottom: 20px; }
     .messages { max-height: 200px; overflow-y: auto; background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(8px); border-radius: 12px; padding: 12px; margin-bottom: 10px; border: 1px solid rgba(255,255,255,0.1); }
     .msg { margin-bottom: 8px; font-size: 0.9rem; line-height: 1.4; }
@@ -32,17 +39,18 @@
     .input-row input { flex-grow: 1; }
     .input-row button { width: auto; }
     
-    /* Model Upload Overlay */
     .drop-zone { border: 2px dashed #00d2ff; padding: 10px; text-align: center; border-radius: 8px; cursor: pointer; font-size: 0.8rem; color: #aaa; margin-top: 8px; }
+    .hidden { display: none !important; }
   </style>
 
-  <!-- Import Three.js & dependencies via ES Modules -->
   <script type="importmap">
     {
       "imports": {
         "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
         "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/",
-        "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.1.2/lib/three-vrm.module.js"
+        "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.1.2/lib/three-vrm.module.js",
+        "firebase/app": "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js",
+        "firebase/auth": "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js"
       }
     }
   </script>
@@ -52,16 +60,31 @@
   <div id="canvas-container"></div>
 
   <div class="ui-layer">
-    <!-- Top Settings Panel -->
     <div class="panel interactive">
-      <h2>🤖 AI Partner 設定</h2>
+      <h2>👤 アカウント & 設定</h2>
       
+      <!-- 未ログイン時の表示 -->
+      <div id="auth-logged-out">
+        <button id="btn-google-login" class="btn-google">Googleでログイン</button>
+        <button id="btn-apple-login" class="btn-apple">Appleでログイン</button>
+      </div>
+
+      <!-- ログイン時の表示 -->
+      <div id="auth-logged-in" class="hidden">
+        <div class="user-info">
+          <img id="user-photo" class="user-avatar" src="" alt="avatar">
+          <span id="user-name" style="font-size:0.9rem;"></span>
+        </div>
+        <button id="btn-logout" class="btn-logout">ログアウト</button>
+      </div>
+
+      <hr style="margin: 15px 0; border:0; border-top: 1px solid rgba(255,255,255,0.1);">
+
       <div class="input-group">
         <label for="character-select">キャラクター切り替え</label>
         <select id="character-select">
           <option value="marisa">霧雨魔理沙</option>
           <option value="miku">初音ミク</option>
-          <option value="custom">カスタム設定</option>
         </select>
       </div>
 
@@ -72,20 +95,18 @@
 
       <div class="input-group">
         <label>3Dモデル (.vrm)</label>
-        <div class="drop-zone" id="drop-zone">.vrm ファイルをドラッグ＆ドロップ<br>またはクリックして選択</div>
+        <div class="drop-zone" id="drop-zone">.vrm ファイルを選択</div>
         <input type="file" id="file-input" accept=".vrm" style="display:none;">
       </div>
     </div>
 
-    <!-- Bottom Chat Panel -->
     <div class="chat-box interactive">
       <div class="messages" id="messages">
-        <div class="msg ai">AI: 準備完了だぜ！何か話しかけてくれよな！</div>
+        <div class="msg ai">AI: ログインしてもそのままでも話せるぜ！</div>
       </div>
       <div class="input-row">
         <input type="text" id="user-input" placeholder="メッセージを入力...">
         <button id="send-btn">送信</button>
-        <button id="mic-btn" style="background:#ff0055; color:#fff;">🎤</button>
       </div>
     </div>
   </div>
@@ -95,11 +116,74 @@
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
     import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
+    import { initializeApp } from 'firebase/app';
+    import { 
+      getAuth, 
+      signInWithPopup, 
+      GoogleAuthProvider, 
+      OAuthProvider, 
+      signOut, 
+      onAuthStateChanged 
+    } from 'firebase/auth';
 
-    // --- 1. Three.js / VRM 3D Setup ---
+    // --- 1. Firebase Auth Setup ---
+    // ▼▼▼ ここにご自身の Firebase 設定オブジェクトを貼り付けてください ▼▼▼
+    const firebaseConfig = {
+      apiKey: "YOUR_FIREBASE_API_KEY",
+      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_PROJECT_ID.appspot.com",
+      messagingSenderId: "YOUR_SENDER_ID",
+      appId: "YOUR_APP_ID"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+
+    const loggedOutDiv = document.getElementById('auth-logged-out');
+    const loggedInDiv = document.getElementById('auth-logged-in');
+    const userNameSpan = document.getElementById('user-name');
+    const userPhotoImg = document.getElementById('user-photo');
+
+    // Google Login
+    document.getElementById('btn-google-login').addEventListener('click', async () => {
+      const provider = new GoogleAuthProvider();
+      try {
+        await signInWithPopup(auth, provider);
+      } catch (err) {
+        alert('Googleログインエラー: ' + err.message);
+      }
+    });
+
+    // Apple Login
+    document.getElementById('btn-apple-login').addEventListener('click', async () => {
+      const provider = new OAuthProvider('apple.com');
+      try {
+        await signInWithPopup(auth, provider);
+      } catch (err) {
+        alert('Appleログインエラー: ' + err.message);
+      }
+    });
+
+    // Logout
+    document.getElementById('btn-logout').addEventListener('click', () => signOut(auth));
+
+    // Auth State Observer
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        loggedOutDiv.classList.add('hidden');
+        loggedInDiv.classList.remove('hidden');
+        userNameSpan.textContent = user.displayName || user.email;
+        userPhotoImg.src = user.photoURL || 'https://via.placeholder.com/32';
+      } else {
+        loggedOutDiv.classList.remove('hidden');
+        loggedInDiv.classList.add('hidden');
+      }
+    });
+
+    // --- 2. Three.js / VRM Engine ---
     const container = document.getElementById('canvas-container');
     const scene = new THREE.Scene();
-    
     const camera = new THREE.PerspectiveCamera(30, window.innerWidth / window.innerHeight, 0.1, 20.0);
     camera.position.set(0.0, 1.4, 1.5);
 
@@ -119,8 +203,6 @@
 
     let currentVrm = null;
     const clock = new THREE.Clock();
-
-    // Default Sample VRM Loader
     const loader = new GLTFLoader();
     loader.register((parser) => new VRMLoaderPlugin(parser));
 
@@ -137,16 +219,11 @@
       });
     }
 
-    // Default VRM (Pixiv Sample Avatar)
     loadVRM('https://pixiv.github.io/three-vrm/packages/three-vrm/examples/models/VRM1_Constraint_Sample.vrm');
 
-    // Animation Loop
     function animate() {
       requestAnimationFrame(animate);
-      const delta = clock.getDelta();
-      if (currentVrm) {
-        currentVrm.update(delta);
-      }
+      if (currentVrm) currentVrm.update(clock.getDelta());
       renderer.render(scene, camera);
     }
     animate();
@@ -157,62 +234,26 @@
       renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
-    // Local VRM File Upload
     const dropZone = document.getElementById('drop-zone');
     const fileInput = document.getElementById('file-input');
-
     dropZone.addEventListener('click', () => fileInput.click());
     fileInput.addEventListener('change', (e) => {
       const file = e.target.files[0];
-      if (file) {
-        const url = URL.createObjectURL(file);
-        loadVRM(url);
-      }
+      if (file) loadVRM(URL.createObjectURL(file));
     });
 
-    // --- 2. Prompts & Personalities ---
+    // --- 3. Chat Logic ---
     const prompts = {
-      marisa: `あなたは東方Projectの「霧雨魔理沙」です。語尾に「〜だぜ」「〜語」「〜なのか？」をつけ、明るく男勝りでサバサバした口調で答えてください。長文にならず、短く簡潔にテンポよく返答してください。`,
-      miku: `あなたはバーチャルシンガーの「初音ミク」です。明るく元気で丁寧、親しみやすい口調で話してください。「〜だよ」「〜ね！」といった可愛らしい語尾を使い、短く答えてください。`
+      marisa: `あなたは東方Projectの「霧雨魔理沙」です。語尾に「〜だぜ」等をつけ男勝りに短く答えてください。`,
+      miku: `あなたはバーチャルシンガーの「初音ミク」です。明るく親しみやすい口調で短く答えてください。`
     };
 
-    // --- 3. Speech Synthesis (TTS) & Mouth Animation ---
-    function speakText(text) {
-      if (!('speechSynthesis' in window)) return;
-      window.speechSynthesis.cancel();
-
-      const uttr = new SpeechSynthesisUtterance(text);
-      uttr.lang = 'ja-JP';
-      uttr.rate = 1.1;
-
-      // Simple Lip Sync Animation using VRM Expression
-      uttr.onboundary = () => {
-        if (currentVrm && currentVrm.expressionManager) {
-          const val = Math.random() * 0.8;
-          currentVrm.expressionManager.setValue('aa', val);
-        }
-      };
-
-      uttr.onend = () => {
-        if (currentVrm && currentVrm.expressionManager) {
-          currentVrm.expressionManager.setValue('aa', 0);
-        }
-      };
-
-      window.speechSynthesis.speak(uttr);
-    }
-
-    // --- 4. Gemini API Integration ---
     async function fetchGeminiResponse(userText) {
       const apiKey = document.getElementById('api-key').value.trim();
-      if (!apiKey) {
-        alert('Gemini API Key を入力してください！');
-        return 'APIキーが設定されていないぜ！設定パネルに入力してくれ！';
-      }
+      if (!apiKey) return 'Gemini APIキーを入力してくれ！';
 
       const charType = document.getElementById('character-select').value;
-      const systemPrompt = prompts[charType] || prompts.marisa;
-
+      const systemPrompt = prompts[charType];
       const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
 
       try {
@@ -220,65 +261,40 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            contents: [
-              { role: 'user', parts: [{ text: `${systemPrompt}\n\nユーザー: ${userText}` }] }
-            ]
+            contents: [{ role: 'user', parts: [{ text: `${systemPrompt}\n\nユーザー: ${userText}` }] }]
           })
         });
-
         const data = await res.json();
         return data.candidates[0].content.parts[0].text;
       } catch (err) {
-        console.error(err);
-        return 'エラーが発生したぜ。APIキーやネットワークを確認してくれ！';
+        return '通信エラーが発生したぜ。';
       }
     }
 
-    // --- 5. UI & Event Handling ---
     const messages = document.getElementById('messages');
     const userInput = document.getElementById('user-input');
     const sendBtn = document.getElementById('send-btn');
-
-    function appendMessage(role, text) {
-      const msg = document.createElement('div');
-      msg.className = `msg ${role}`;
-      msg.textContent = `${role === 'user' ? 'あなた' : 'AI'}: ${text}`;
-      messages.appendChild(msg);
-      messages.scrollTop = messages.scrollHeight;
-    }
 
     async function handleSend() {
       const text = userInput.value.trim();
       if (!text) return;
 
-      appendMessage('user', text);
+      const userMsg = document.createElement('div');
+      userMsg.className = 'msg user';
+      userMsg.textContent = `あなた: ${text}`;
+      messages.appendChild(userMsg);
       userInput.value = '';
 
       const reply = await fetchGeminiResponse(text);
-      appendMessage('ai', reply);
-      speakText(reply);
+      const aiMsg = document.createElement('div');
+      aiMsg.className = 'msg ai';
+      aiMsg.textContent = `AI: ${reply}`;
+      messages.appendChild(aiMsg);
+      messages.scrollTop = messages.scrollHeight;
     }
 
     sendBtn.addEventListener('click', handleSend);
-    userInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') handleSend();
-    });
-
-    // Speech Recognition Setup (STT)
-    const micBtn = document.getElementById('mic-btn');
-    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      const recognition = new SpeechRecognition();
-      recognition.lang = 'ja-JP';
-
-      micBtn.addEventListener('click', () => recognition.start());
-      recognition.onresult = (e) => {
-        userInput.value = e.results[0][0].transcript;
-        handleSend();
-      };
-    } else {
-      micBtn.style.display = 'none';
-    }
+    userInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleSend(); });
   </script>
 </body>
 </html>
