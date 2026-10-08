@@ -19,11 +19,14 @@ app.post('/api/chat', async (req, res) => {
     const { message, character } = req.body;
 
     if (!GEMINI_API_KEY) {
-      return res.status(500).json({ error: 'Gemini APIキーが設定されていません。' });
+      console.error('ERROR: GEMINI_API_KEY is not set in Environment Variables.');
+      return res.status(500).json({ error: 'サーバーにGEMINI_API_KEYが設定されていません。' });
     }
 
     const systemPrompt = PROMPTS[character] || PROMPTS.marisa;
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+    
+    // 標準モデル（gemini-1.5-flash）を指定
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
     const response = await fetch(endpoint, {
       method: 'POST',
@@ -36,11 +39,20 @@ app.post('/api/chat', async (req, res) => {
     });
 
     const data = await response.json();
-    const replyText = data.candidates?.[0]?.content?.parts?.[0]?.text || 'うまく返答できなかったぜ。';
 
+    // エラーレスポンスが返ってきた場合
+    if (!response.ok || data.error) {
+      console.error('Gemini API Error Detail:', JSON.stringify(data.error || data));
+      const errMsg = data.error?.message || 'Gemini APIエラーが発生しました。';
+      return res.status(response.status || 500).json({ error: `APIエラー: ${errMsg}` });
+    }
+
+    const replyText = data.candidates?.[0]?.content?.parts?.[0]?.text || '返答の取得に失敗しました。';
     res.json({ reply: replyText });
+
   } catch (error) {
-    res.status(500).json({ error: '通信エラーが発生しました。' });
+    console.error('Server Catch Error:', error);
+    res.status(500).json({ error: `サーバーエラー: ${error.message}` });
   }
 });
 
